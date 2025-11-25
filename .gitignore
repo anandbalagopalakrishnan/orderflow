@@ -1,0 +1,19 @@
+# Ignore build artifacts
+.groupi
+node_modules/
+dist/
+data/
+fancy-canvas/
+*.ipynb
+.vscode
+
+# Ignore Python bytecode files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+env/
+venv/
+ENV/
+*.log
+.env
