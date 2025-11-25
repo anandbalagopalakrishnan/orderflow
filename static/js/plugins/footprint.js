@@ -185,16 +185,34 @@ class FootprintRenderer {
 
             // Determine cell color and transparency
             let bgColor, alpha;
-            if (!total) {
+            if (buy === 0 && sell === 0) {
+                // 0x0 cells always show yellow regardless of toggle state
+                bgColor = this._options.lowVolumeColor || '#FFB433';
+                alpha = 0.3; // Fixed subtle alpha for 0x0 cells
+            } else if (!total) {
                 bgColor = neutralColor;
                 alpha = 0.02;
             } else if (buy < 99 || sell < 99) {
-                // Low volume cells in yellow
-                bgColor = this._options.lowVolumeColor || '#FFB433';
+                // Low volume cells - use gradient coloring when toggle is active, yellow when inactive
+                const yellowLowVolumeColor = this._options.lowVolumeColor || '#FFB433';
                 const minVolume = Math.min(buy, sell);
-                alpha = Math.max(0.2, 0.6 - (minVolume / 99) * 0.3);
+
+                // Check if low volume marker is hidden - if so, use gradient coloring instead of yellow
+                const shouldHideYellowLowVolume = document.body.classList.contains('hide-low-volume');
+                if (shouldHideYellowLowVolume) {
+                    // Use volume-based gradient coloring for low volume cells too
+                    const ratio = (total - minVol) / volRange;
+                    const grad = delta >= 0 ? upGradient : downGradient;
+                    const idx = Math.min(grad.length - 1, Math.floor(ratio * grad.length));
+                    bgColor = grad[idx];
+                    alpha = Math.max(0.15, 0.25 + Math.min(1, Math.abs(delta / (total || 1))) * 0.35); // Slightly more subtle for low volume
+                } else {
+                    // Original yellow coloring for low volume cells
+                    bgColor = yellowLowVolumeColor;
+                    alpha = Math.max(0.2, 0.6 - (minVolume / 99) * 0.3);
+                }
             } else {
-                // Volume-based gradient coloring
+                // Volume-based gradient coloring for normal cells
                 const ratio = (total - minVol) / volRange;
                 const grad = delta >= 0 ? upGradient : downGradient;
                 const idx = Math.min(grad.length - 1, Math.floor(ratio * grad.length));
@@ -208,6 +226,7 @@ class FootprintRenderer {
 
             // Draw with rounded corners for first and last cells
             const radius = Math.min(2, Math.min(xPos.length, yPos.length) * 0.1);
+
             if (radius > 0.5 && (i === 0 || i === fp.length - 1)) {
                 ctx.beginPath();
                 if (i === 0) {
@@ -658,6 +677,19 @@ export const FootprintSeries = {
         return this;
     },
 
+    // Add method to handle low volume toggle events
+    setupLowVolumeToggleListener() {
+        document.addEventListener('lowVolumeMarkerToggled', () => {
+            // Trigger chart re-render when low volume state changes
+            if (window.chartRegistry && typeof window.selectedChartIndex === 'number') {
+                const chartObj = window.chartRegistry[window.selectedChartIndex];
+                if (chartObj && chartObj.chart && typeof chartObj.chart.requestAnimationFrame === 'function') {
+                    chartObj.chart.requestAnimationFrame();
+                }
+            }
+        });
+    },
+
     destroy() {
         if (this._renderer?._textCache) {
             this._renderer._textCache.clear();
@@ -665,5 +697,8 @@ export const FootprintSeries = {
         this._renderer = null;
         this._options = null;
         this._defaultOptions = null;
+
+        // Remove low volume toggle listener
+        document.removeEventListener('lowVolumeMarkerToggled', this.setupLowVolumeToggleListener);
     }
 };

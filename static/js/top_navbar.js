@@ -8,11 +8,14 @@ let isNavbarVisible = true;
 
 // Setup navbar toggle keyboard shortcuts
 function setupNavbarToggle() {
-    // Add keyboard shortcut for toggling navbar (Ctrl+Space)
+    // Add keyboard shortcuts
     document.addEventListener('keydown', (e) => {
         if (e.ctrlKey && e.code === 'Space') {
             e.preventDefault();
             toggleNavbarVisibility();
+        } else if (e.ctrlKey && e.key.toLowerCase() === 'x') {
+            e.preventDefault();
+            toggleLowVolumeMarker();
         }
     });
 }
@@ -104,6 +107,17 @@ export function createNavbar() {
                     <!-- Trash can icon copied from drawing-tool.js -->
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="color: #F23645;" aria-hidden="true">
                         <path d="M6 19C6 20.1 6.9 21 8 21H16C17.1 21 18 20.1 18 19V7H6V19ZM19 4H15.5L14.5 3H9.5L8.5 4H5V6H19V4Z"/>
+                    </svg>
+                </button>
+                <button id="low-volume-toggle-btn" class="layout-btn" title="Low Volume Marker (Ctrl+X)" aria-label="Toggle Low Volume Marker">
+                    <!-- Low volume icon: battery with low level -->
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                        <rect x="2" y="8" width="14" height="8" rx="1" stroke="currentColor" stroke-width="1.5" fill="none"/>
+                        <rect x="17" y="10" width="3" height="4" rx="0.5" fill="currentColor"/>
+                        <!-- Low volume indicator bars (only 1 bar showing low) -->
+                        <rect x="4" y="11" width="2" height="2" fill="currentColor"/>
+                        <rect x="7" y="10" width="2" height="4" fill="currentColor" opacity="0.3"/>
+                        <rect x="10" y="9" width="2" height="6" fill="currentColor" opacity="0.3"/>
                     </svg>
                 </button>
                 <button id="settings-btn" class="settings-btn" title="Settings">
@@ -360,6 +374,14 @@ export function createNavbar() {
         });
     }
 
+    // Register low volume toggle button
+    const lowVolumeToggleBtn = navbar.querySelector('#low-volume-toggle-btn');
+    if (lowVolumeToggleBtn) {
+        lowVolumeToggleBtn.addEventListener('click', () => {
+            toggleLowVolumeMarker();
+        });
+    }
+
     // Setup layout menu dropdown toggle and outside-click handler
     const layoutMenuTrigger = navbar.querySelector('#layout-menu-trigger');
     // The dropdown will be created dynamically on first click to avoid flashing during load/refresh
@@ -489,6 +511,27 @@ export function createNavbar() {
                 horizontalLineBtn.style.background = '';
             }
         }
+
+        // Update low volume marker button state based on chart-specific settings
+        const lowVolumeToggleBtn = document.getElementById('low-volume-toggle-btn');
+        if (lowVolumeToggleBtn) {
+            try {
+                const chartId = 'chart-' + (window.selectedChartIndex || 0);
+                const saved = localStorage.getItem('chartSettings_' + chartId);
+                let shouldShow = false;
+
+                if (saved) {
+                    const obj = JSON.parse(saved);
+                    shouldShow = obj.showLowVolumeMarker || false;
+                }
+
+                isLowVolumeMarkerVisible = shouldShow;
+                lowVolumeToggleBtn.classList.toggle('active', shouldShow);
+                lowVolumeToggleBtn.style.background = shouldShow ? '#2962FF' : '';
+            } catch (err) {
+                console.warn('Error updating low volume marker button state:', err);
+            }
+        }
     });
 
 
@@ -545,6 +588,49 @@ document.addEventListener('DOMContentLoaded', () => {
     startNavbarClock();
 });
 
+
+// Store low volume marker visibility state
+let isLowVolumeMarkerVisible = false;
+
+// Function to toggle low volume marker
+export function toggleLowVolumeMarker() {
+    const lowVolumeToggleBtn = document.getElementById('low-volume-toggle-btn');
+    if (!lowVolumeToggleBtn) return;
+
+    isLowVolumeMarkerVisible = !isLowVolumeMarkerVisible;
+
+    // Update button appearance
+    if (isLowVolumeMarkerVisible) {
+        lowVolumeToggleBtn.classList.add('active');
+        lowVolumeToggleBtn.style.background = '#2962FF';
+        document.body.classList.add('hide-low-volume');
+    } else {
+        lowVolumeToggleBtn.classList.remove('active');
+        lowVolumeToggleBtn.style.background = '';
+        document.body.classList.remove('hide-low-volume');
+    }
+
+    // Save state to localStorage for current chart
+    try {
+        const chartId = 'chart-' + (window.selectedChartIndex || 0);
+        const saved = localStorage.getItem('chartSettings_' + chartId);
+        const settings = saved ? JSON.parse(saved) : {};
+        settings.showLowVolumeMarker = isLowVolumeMarkerVisible;
+        localStorage.setItem('chartSettings_' + chartId, JSON.stringify(settings));
+    } catch (err) {
+        console.warn('Error saving low volume marker state:', err);
+    }
+
+    // Dispatch event for other components to handle the toggle
+    document.dispatchEvent(new CustomEvent('lowVolumeMarkerToggled', {
+        detail: { visible: isLowVolumeMarkerVisible }
+    }));
+
+    // Trigger chart refresh to apply changes
+    setTimeout(() => {
+        window.dispatchEvent(new Event('resize'));
+    }, 100);
+}
 
 // Function to robustly toggle navbar visibility and always restore layout correctly
 
@@ -829,6 +915,30 @@ export function injectStyles() {
             margin-right: 8px;
             min-width: 56px;
             text-align: left;
+        }
+
+        /* CSS for hiding low volume footprint cells */
+        .hide-low-volume .footprint-cell.low-volume {
+            opacity: 0 !important;
+            pointer-events: none !important;
+        }
+
+        .hide-low-volume .footprint-cell.low-volume .volume-text {
+            display: none !important;
+        }
+
+        /* Low volume marker button active state */
+        #low-volume-toggle-btn.active {
+            background: #2962FF !important;
+        }
+
+        /* Store reference for dynamic low volume cell identification */
+        .footprint-cell {
+            transition: opacity 0.2s ease;
+        }
+
+        .footprint-cell.low-volume {
+            /* Will be identified and controlled by the footprint renderer */
         }
 	`;
     document.head.appendChild(style);
